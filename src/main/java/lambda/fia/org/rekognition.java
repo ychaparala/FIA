@@ -4,11 +4,22 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.io.ByteArrayOutputStream;
-import org.apache.commons.codec.binary.Base64;
+
+//import org.apache.commons.codec.binary.Base64;
+
 import java.net.URL;
+import java.nio.ByteBuffer;
+import java.util.List;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
+import com.amazonaws.regions.Regions;
+import com.amazonaws.services.rekognition.AmazonRekognition;
+import com.amazonaws.services.rekognition.AmazonRekognitionClientBuilder;
+import com.amazonaws.services.rekognition.model.DetectLabelsRequest;
+import com.amazonaws.services.rekognition.model.DetectLabelsResult;
+import com.amazonaws.services.rekognition.model.Image;
+import com.amazonaws.services.rekognition.model.Label;
 
 //import org.apache.http.Header;
 //import org.apache.http.HttpResponse;
@@ -21,12 +32,28 @@ import com.amazonaws.services.lambda.runtime.RequestHandler;
 public class rekognition implements RequestHandler < String, String > {
     public String handleRequest(String input, Context context) {
         String output = "";
-        output = generateRekognitionJSON("name", getImageBytes(input));
+//        output = generateRekognitionJSON("name", getImageBytes(input));
         context.getLogger().log("Input: " + input);
+        AmazonRekognition amazonRekognition = AmazonRekognitionClientBuilder
+            .standard()
+            .withRegion(Regions.US_WEST_2)
+            .build();
+            
+        DetectLabelsRequest request = new DetectLabelsRequest()
+            .withImage(new Image()
+            .withBytes(ByteBuffer.wrap(getImageBytes(input))));
+
+         DetectLabelsResult result=amazonRekognition.detectLabels(request);
+         List<Label> labels = result.getLabels();
+         for (Label label : labels)
+             {
+                output+="Label: " + label.getName().toString()+ "\n Confidence: " + label.getConfidence().toString();
+            }
+
         return output;
     }
 
-    private static String getImageBytes(String urlText) {
+    private static byte[] getImageBytes(String urlText) {
         URL url = null;
         try {
             url = new URL(urlText);
@@ -47,16 +74,15 @@ public class rekognition implements RequestHandler < String, String > {
             // TODO Auto-generated catch block
             e.printStackTrace();
         }
-        return encodeImage(output.toByteArray());
+        return output.toByteArray();
     }
 
-    public static String encodeImage(byte[] imageByteArray) {
-        return Base64.encodeBase64URLSafeString(imageByteArray);
-    }
+//    public static String encodeImage(byte[] imageByteArray) {
+//        return Base64.encodeBase64URLSafeString(imageByteArray);
+//    }
 
-    private static String generateRekognitionJSON(String name, String encodedImage) {
-        String JSON = "{\"Image\":{\"Bytes\":" + encodedImage + '}';
-
-        return JSON;
-    }
+//    private static String generateRekognitionJSON(String name, String encodedImage) {
+//        String JSON = "{"+(char)34+"Image"+(char)34+":{"+(char)34+"Bytes"+(char)34+":"+(char)34+ encodedImage +(char)34+"}}";
+//        return JSON;
+//    }
 }
