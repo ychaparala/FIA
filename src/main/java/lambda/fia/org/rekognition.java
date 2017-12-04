@@ -1,88 +1,92 @@
 package lambda.fia.org;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.MalformedURLException;
-import java.io.ByteArrayOutputStream;
 
-//import org.apache.commons.codec.binary.Base64;
-
-import java.net.URL;
-import java.nio.ByteBuffer;
-import java.util.List;
-
-import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
-import com.amazonaws.regions.Regions;
 import com.amazonaws.services.rekognition.AmazonRekognition;
 import com.amazonaws.services.rekognition.AmazonRekognitionClientBuilder;
+import com.amazonaws.services.rekognition.model.AmazonRekognitionException;
 import com.amazonaws.services.rekognition.model.DetectLabelsRequest;
 import com.amazonaws.services.rekognition.model.DetectLabelsResult;
 import com.amazonaws.services.rekognition.model.Image;
 import com.amazonaws.services.rekognition.model.Label;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-//import org.apache.http.Header;
-//import org.apache.http.HttpResponse;
-//import org.apache.http.client.ClientProtocolException;
-//import org.apache.http.client.HttpClient;
-//import org.apache.http.client.methods.HttpPost;
-//import org.apache.http.entity.StringEntity;
-//import org.apache.http.impl.client.DefaultHttpClient;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.List;
+
+import javax.imageio.ImageIO;
+
+import com.amazonaws.auth.AWSStaticCredentialsProvider;
+import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.regions.Regions;
+import com.amazonaws.services.lambda.runtime.Context;
 
 public class rekognition implements RequestHandler < String, String > {
-    public String handleRequest(String input, Context context) {
-        String output = "";
-//        output = generateRekognitionJSON("name", getImageBytes(input));
-        context.getLogger().log("Input: " + input);
-        AmazonRekognition amazonRekognition = AmazonRekognitionClientBuilder
-            .standard()
-            .withRegion(Regions.US_WEST_2)
-            .build();
-            
-        DetectLabelsRequest request = new DetectLabelsRequest()
-            .withImage(new Image()
-            .withBytes(ByteBuffer.wrap(getImageBytes(input))));
-
-         DetectLabelsResult result=amazonRekognition.detectLabels(request);
-         List<Label> labels = result.getLabels();
-         for (Label label : labels)
-             {
-                output+="Label: " + label.getName().toString()+ "\n Confidence: " + label.getConfidence().toString();
-            }
-
-        return output;
-    }
-
-    private static byte[] getImageBytes(String urlText) {
-        URL url = null;
-        try {
-            url = new URL(urlText);
-        } catch (MalformedURLException e1) {
-            // TODO Auto-generated catch block
-            e1.printStackTrace();
-        }
-        ByteArrayOutputStream output = new ByteArrayOutputStream();
-        InputStream inputStream = null;
-        try {
-            inputStream = url.openStream();
-            int n = 0;
-            byte[] buffer = new byte[1024];
-            while (-1 != (n = inputStream.read(buffer))) {
-                output.write(buffer, 0, n);
-            }
-        } catch (IOException e) {
-            // TODO Auto-generated catch block
+    
+	public String handleRequest(String input, Context context) {
+    	
+		//Access Key ID Secret Access Key
+    	BasicAWSCredentials awsCreds = new BasicAWSCredentials("Access Key ID", "Secret Access Key");
+    	
+    	context.getLogger().log("Input: " + input);
+    	AmazonRekognition amazonRekognition = AmazonRekognitionClientBuilder
+    				.standard()
+                .withRegion(Regions.US_WEST_2)
+                .withCredentials(new AWSStaticCredentialsProvider(awsCreds))
+                .build();
+    	Image imageInput = new Image();
+    	String output ="";
+    	try {
+			imageInput = getAWSFormatImage(input);
+		} catch (IOException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+    	DetectLabelsRequest request = new DetectLabelsRequest()
+                .withImage(imageInput)
+                .withMaxLabels(10)
+                .withMinConfidence(77F);
+    	try {
+            DetectLabelsResult result = amazonRekognition.detectLabels(request);
+            List<Label> labels = result.getLabels();
+          //Object to JSON in file
+            ObjectMapper mapper = new ObjectMapper();
+            try {
+				output=mapper.writeValueAsString(labels);
+			} catch (JsonProcessingException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+        } catch (AmazonRekognitionException e) {
             e.printStackTrace();
         }
-        return output.toByteArray();
-    }
+    	
+    	return output;
+}
 
-//    public static String encodeImage(byte[] imageByteArray) {
-//        return Base64.encodeBase64URLSafeString(imageByteArray);
-//    }
+	private static Image getAWSFormatImage(String ImageBytes) throws IOException{
+		byte[] imageInByte; 
+		String encodedImg = ImageBytes.split(",")[1];
+	    byte[] bytes = Base64.getDecoder().decode(encodedImg.getBytes(StandardCharsets.UTF_8));
 
-//    private static String generateRekognitionJSON(String name, String encodedImage) {
-//        String JSON = "{"+(char)34+"Image"+(char)34+":{"+(char)34+"Bytes"+(char)34+":"+(char)34+ encodedImage +(char)34+"}}";
-//        return JSON;
-//    }
+		InputStream in = new ByteArrayInputStream(bytes);
+		BufferedImage bImageFromConvert = ImageIO.read(in);
+		// convert BufferedImage to byte array
+		ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		ImageIO.write(bImageFromConvert, "jpg", baos);
+		baos.flush();
+		imageInByte = baos.toByteArray();
+		baos.close();
+		ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
+		
+      return new Image().withBytes(byteBuffer);
+	}
 }
